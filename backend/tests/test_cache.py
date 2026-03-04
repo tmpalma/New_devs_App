@@ -14,3 +14,13 @@ async def test_invalidate_revenue_cache_success():
         result = await invalidate_revenue_cache("t1", "p1")
     assert result is True
     mock_delete.assert_called_once_with("revenue:t1:p1")
+
+
+@pytest.mark.asyncio
+async def test_invalidate_revenue_cache_failure():
+    """invalidate_revenue_cache returns False when Redis delete raises."""
+    mock_delete = AsyncMock(side_effect=Exception("redis error"))
+    with patch("app.services.cache.redis_client", delete=mock_delete):
+        result = await invalidate_revenue_cache("t1", "p1")
+    assert result is False
+    mock_delete.assert_called_once_with("revenue:t1:p1")
