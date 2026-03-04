@@ -344,6 +344,14 @@ async def get_city_access_fast(
                 
                 cities = sorted(list(set(cities)))  # Remove duplicates and sort
                 logger.info(f"✅ USER_CITIES: User {user.email} assigned to {len(cities)} cities: {cities}")
+
+                # Option B: When users_city is empty, fall back to all cities in the user's tenant
+                if not cities and tenant_id:
+                    try:
+                        cities = await get_all_tenant_cities(tenant_id)
+                        logger.info(f"✅ USER_CITIES_FALLBACK: No users_city rows; granted all tenant cities for {user.email} (tenant {tenant_id}): {cities}")
+                    except Exception as fallback_err:
+                        logger.warning(f"USER_CITIES_FALLBACK: Failed to get tenant cities for {tenant_id}: {fallback_err}")
             
             # 🔒 FINAL VALIDATION: Ensure we have valid results
             if not isinstance(cities, list):

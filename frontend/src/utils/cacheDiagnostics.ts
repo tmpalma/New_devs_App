@@ -197,8 +197,9 @@ export async function forceRefreshPropertiesCache(): Promise<void> {
     // Clear IndexedDB properties cache
     await clearIndexedDBCache();
     
-    // Make a fresh API call with force_refresh=true
-    const response = await fetch('/api/v1/properties/all?force_refresh=true', {
+    // Make a fresh API call to tenant-scoped properties endpoint
+    const apiBase = import.meta.env.VITE_API_URL || import.meta.env.VITE_BACKEND_URL || '';
+    const response = await fetch(`${apiBase}/api/v1/properties`, {
       headers: {
         'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
         'Content-Type': 'application/json'
@@ -207,9 +208,10 @@ export async function forceRefreshPropertiesCache(): Promise<void> {
     
     if (response.ok) {
       const data = await response.json();
-      console.log(`✅ Fresh properties fetched: ${data.properties?.length || 0} properties`);
+      const count = data.data?.length ?? data.properties?.length ?? 0;
+      console.log(`✅ Fresh properties fetched: ${count} properties (tenant_id: ${data.tenant_id ?? 'n/a'})`);
       
-      if (data.properties?.length === 0) {
+      if (count === 0) {
         console.warn('⚠️ Still getting 0 properties after forced refresh - tenant assignment issue likely persists');
       }
     } else {

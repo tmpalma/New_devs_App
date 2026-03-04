@@ -30,6 +30,7 @@ from .api.v1 import (
     dashboard,
     login,
     properties,
+    filters,
 )
 
 from .monitoring.middleware import PerformanceMonitoringMiddleware
@@ -199,6 +200,9 @@ app.include_router(city_access_fixed.router, prefix="/api/v1", tags=["city-acces
 
 # Properties (tenant-scoped)
 app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
+
+# Filters (tenant-scoped cities/portfolios for CityAccessContext)
+app.include_router(filters.router, prefix="/api/v1", tags=["filters"])
 
 # Infrastructure
 app.include_router(health.router, prefix="/api/v1", tags=["health"])

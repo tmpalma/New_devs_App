@@ -1074,6 +1074,9 @@ export class SecureAPIClient {
         } else if ('data' in result) {
           console.log('[SecureAPI.getProperties] Found data array with', result.data?.length || 0, 'properties');
           return result; // Already in correct format
+        } else if ('properties' in result && Array.isArray(result.properties)) {
+          console.log('[SecureAPI.getProperties] Found properties array with', result.properties.length, 'properties');
+          return { data: result.properties, total: result.total ?? result.properties.length };
         } else if (Array.isArray(result)) {
           console.log('[SecureAPI.getProperties] Result is array with', result.length, 'properties');
           return { data: result, total: result.length };

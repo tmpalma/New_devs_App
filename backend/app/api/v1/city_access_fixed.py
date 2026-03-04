@@ -182,8 +182,9 @@ async def get_user_city_access_fixed(
                         invalid_cities = set(user_cities) - set(all_tenant_cities)
                         logger.warning(f"INVALID_CITIES: User {user.email} assigned to cities not in tenant {tenant_id}: {invalid_cities}")
                 else:
-                    cities = []
-                    logger.warning(f"NO_CITIES: User {user.email} has no city assignments in tenant {tenant_id}")
+                    # Option B: When users_city is empty, fall back to all cities in the user's tenant
+                    cities = await get_all_tenant_cities(tenant_id) if tenant_id else []
+                    logger.info(f"USER_CITIES_FALLBACK: No users_city rows; granted all tenant cities for {user.email} (tenant {tenant_id}): {cities}")
             
             # Validate results
             if not isinstance(cities, list):
