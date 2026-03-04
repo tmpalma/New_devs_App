@@ -65,3 +65,27 @@ async def test_get_revenue_summary_cache_hit():
     mock_get.assert_called_once_with("revenue:t1:p1")
     mock_calculate.assert_not_called()
     mock_setex.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_revenue_summary_cache_miss():
+    """get_revenue_summary on cache miss calls calculate_total_revenue and caches result."""
+    db_result = {
+        "property_id": "p1",
+        "tenant_id": "t1",
+        "total": "100.00",
+        "currency": "USD",
+        "count": 2,
+    }
+    mock_get = AsyncMock(return_value=None)
+    mock_setex = AsyncMock()
+    mock_calculate = AsyncMock(return_value=db_result)
+    with (
+        patch("app.services.cache.redis_client", get=mock_get, setex=mock_setex),
+        patch("app.services.reservations.calculate_total_revenue", mock_calculate),
+    ):
+        result = await get_revenue_summary("p1", "t1")
+    assert result == db_result
+    mock_get.assert_called_once_with("revenue:t1:p1")
+    mock_calculate.assert_called_once_with("p1", "t1")
+    mock_setex.assert_called_once_with("revenue:t1:p1", 300, json.dumps(db_result))
