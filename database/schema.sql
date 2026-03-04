@@ -14,9 +14,14 @@ CREATE TABLE properties (
     tenant_id TEXT REFERENCES tenants(id),
     name TEXT NOT NULL,
     timezone TEXT NOT NULL DEFAULT 'UTC',
+    city TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     PRIMARY KEY (id, tenant_id)
 );
+
+-- View for code that references all_properties (same columns as properties)
+CREATE VIEW all_properties AS SELECT * FROM properties;
 
 -- Reservations Table
 CREATE TABLE reservations (

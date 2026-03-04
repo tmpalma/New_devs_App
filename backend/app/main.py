@@ -29,6 +29,7 @@ from .api.v1 import (
     persistent_auth,
     dashboard,
     login,
+    properties,
 )
 
 from .monitoring.middleware import PerformanceMonitoringMiddleware
@@ -195,6 +196,9 @@ app.include_router(departments.router, prefix="/api/v1", tags=["departments"])
 app.include_router(cities.router, prefix="/api/v1", tags=["cities"])
 app.include_router(city_access_fast.router, prefix="/api/v1", tags=["city-access-fast"])
 app.include_router(city_access_fixed.router, prefix="/api/v1", tags=["city-access-fixed"])
+
+# Properties (tenant-scoped)
+app.include_router(properties.router, prefix="/api/v1", tags=["properties"])
 
 # Infrastructure
 app.include_router(health.router, prefix="/api/v1", tags=["health"])

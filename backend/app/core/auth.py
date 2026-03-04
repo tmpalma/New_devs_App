@@ -10,6 +10,7 @@ from ..database import supabase
 from ..models.auth import AuthenticatedUser, Permission
 from ..config import settings
 from .tenant_resolver import TenantResolver
+from .tenant_context import set_tenant_id, set_user_token
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,9 @@ async def authenticate_request(
                 logger.info(
                     f"AUTH: Using cached authentication for token {token_hash} (tenant: {cached_user.tenant_id}) for user: {cached_user.email}"
                 )
+                # Set request-scoped tenant context for cached auth too (so get_tenant_id() is correct)
+                set_tenant_id(cached_user.tenant_id)
+                set_user_token(credentials.credentials)
                 return cached_user
         else:
             # Remove expired cache entry
@@ -252,8 +256,16 @@ async def authenticate_request(
         logger.info(f"==================== TENANT ID EXTRACTION ====================")
         logger.info(f"User: {user.email} (ID: {user.id})")
 
-        # Use TenantResolver for comprehensive tenant resolution
-        tenant_id = await TenantResolver.resolve_tenant_id(token=token, user_id=user.id, user_email=user.email)
+        # Prefer tenant_id from JWT/user (e.g. login response) so Ocean vs Sunset get correct tenant
+        user_data = {
+            "app_metadata": getattr(user, "app_metadata", {}) or {},
+            "user_metadata": getattr(user, "user_metadata", {}) or {},
+        }
+        if getattr(user, "tenant_id", None):
+            user_data["tenant_id"] = user.tenant_id
+        tenant_id = TenantResolver.resolve_tenant_from_user(user_data)
+        if not tenant_id:
+            tenant_id = await TenantResolver.resolve_tenant_id(token=token, user_id=user.id, user_email=user.email)
 
         # If we found a tenant_id and it's not in the user's metadata, update it for next time
         current_tenant_in_metadata = None
@@ -276,6 +288,11 @@ async def authenticate_request(
             is_admin=is_admin,
             tenant_id=tenant_id,
         )
+
+        # Set request-scoped tenant context so get_tenant_id() and DB filtering use correct tenant
+        if tenant_id:
+            set_tenant_id(tenant_id)
+        set_user_token(token)
 
         # Cache the authentication result
         auth_cache[token_hash] = {

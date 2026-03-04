@@ -4,13 +4,13 @@ INSERT INTO tenants (id, name) VALUES
     ('tenant-b', 'Ocean Rentals');
 
 -- INSERT PROPERTIES
-INSERT INTO properties (id, tenant_id, name, timezone) VALUES
-    ('prop-001', 'tenant-a', 'Beach House Alpha', 'Europe/Paris'),
-    ('prop-001', 'tenant-b', 'Mountain Lodge Beta', 'America/New_York'),
-    ('prop-002', 'tenant-a', 'City Apartment Downtown', 'Europe/Paris'),
-    ('prop-003', 'tenant-a', 'Country Villa Estate', 'Europe/Paris'),
-    ('prop-004', 'tenant-b', 'Lakeside Cottage', 'America/New_York'),
-    ('prop-005', 'tenant-b', 'Urban Loft Modern', 'America/New_York');
+INSERT INTO properties (id, tenant_id, name, timezone, city, status) VALUES
+    ('prop-001', 'tenant-a', 'Beach House Alpha', 'Europe/Paris', 'Paris', 'active'),
+    ('prop-001', 'tenant-b', 'Mountain Lodge Beta', 'America/New_York', 'New York', 'active'),
+    ('prop-002', 'tenant-a', 'City Apartment Downtown', 'Europe/Paris', 'Paris', 'active'),
+    ('prop-003', 'tenant-a', 'Country Villa Estate', 'Europe/Paris', 'Lyon', 'active'),
+    ('prop-004', 'tenant-b', 'Lakeside Cottage', 'America/New_York', 'Buffalo', 'active'),
+    ('prop-005', 'tenant-b', 'Urban Loft Modern', 'America/New_York', 'New York', 'active');
 
 -- INSERT RESERVATIONS
 

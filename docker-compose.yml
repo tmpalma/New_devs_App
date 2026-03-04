@@ -37,7 +37,7 @@ services:
     ports:
       - "5433:5432"
     volumes:
-      # Initialize DB with schema and seeds
+      # Initialize DB with schema and seeds (schema already has city, status, all_properties view)
       - ./database/schema.sql:/docker-entrypoint-initdb.d/1-schema.sql
       - ./database/seed.sql:/docker-entrypoint-initdb.d/2-seed.sql
       # Ephemeral storage for easy reset (comment out to persist)
