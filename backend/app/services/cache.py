@@ -1,10 +1,12 @@
 import json
+import logging
 import redis.asyncio as redis
-from typing import Dict, Any
+from typing import Dict, Any, List
 import os
 
 # Initialize Redis client (typically configured centrally).
 redis_client = redis.Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+logger = logging.getLogger(__name__)
 
 async def get_revenue_summary(property_id: str, tenant_id: str) -> Dict[str, Any]:
     """
@@ -28,3 +30,31 @@ async def get_revenue_summary(property_id: str, tenant_id: str) -> Dict[str, Any
     await redis_client.setex(cache_key, 300, json.dumps(result))
     
     return result
+
+
+async def invalidate_revenue_cache(tenant_id: str, property_id: str) -> bool:
+    """
+    Invalidate the revenue cache for a given tenant and property.
+    Call this when reservations for this property are created, updated, or
+    deleted (or when total_amount changes) so the dashboard shows fresh totals.
+    """
+    try:
+        cache_key = f"revenue:{tenant_id}:{property_id}"
+        await redis_client.delete(cache_key)
+        logger.debug("Invalidated revenue cache for tenant %s property %s", tenant_id, property_id)
+        return True
+    except Exception as e:
+        logger.warning("Failed to invalidate revenue cache: %s", e)
+        return False
+
+
+async def invalidate_revenue_cache_for_properties(tenant_id: str, property_ids: List[str]) -> int:
+    """
+    Invalidate revenue cache for multiple properties (e.g. after bulk sync).
+    Returns the number of keys invalidated.
+    """
+    count = 0
+    for property_id in property_ids:
+        if await invalidate_revenue_cache(tenant_id, property_id):
+            count += 1
+    return count
