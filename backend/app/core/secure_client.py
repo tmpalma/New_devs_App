@@ -1,14 +1,21 @@
 """
 Secure Client for tenant-isolated database operations
-This module provides secure database access with automatic tenant filtering
+This module provides secure database access with automatic tenant filtering.
+When Supabase is not configured, uses local Postgres (DATABASE_URL) for properties and reservations.
 """
 
 import logging
 from typing import Any, Dict, List, Optional
+from ..config import settings
 from ..database import supabase
 from .tenant_context import get_tenant_id
 
 logger = logging.getLogger(__name__)
+
+
+def _use_local_postgres() -> bool:
+    """True when Supabase is not configured; use local Postgres for properties/reservations."""
+    return not (settings.supabase_url and settings.supabase_service_role_key)
 
 
 class SecureClient:
@@ -62,6 +69,10 @@ class SecureClient:
         
         logger.info(f"SecureClient.get_properties for tenant: {tenant_id}")
         
+        if _use_local_postgres():
+            from .local_postgres import get_properties as local_get_properties
+            return await local_get_properties(tenant_id, filters)
+        
         try:
             query = supabase.table('properties').select('*')
             query = SecureClient._apply_tenant_filter(query, tenant_id, 'properties')
@@ -98,6 +109,10 @@ class SecureClient:
         
         logger.info(f"SecureClient.get_reservations for tenant: {tenant_id}")
         
+        if _use_local_postgres():
+            from .local_postgres import get_reservations as local_get_reservations
+            return await local_get_reservations(tenant_id, filters)
+        
         try:
             query = supabase.table('reservations').select('*')
             query = SecureClient._apply_tenant_filter(query, tenant_id, 'reservations')
@@ -111,9 +126,9 @@ class SecureClient:
                         elif key == 'status':
                             query = query.eq('status', value)
                         elif key == 'check_in_date':
-                            query = query.gte('check_in', value)
+                            query = query.gte('check_in_date', value)
                         elif key == 'check_out_date':
-                            query = query.lte('check_out', value)
+                            query = query.lte('check_out_date', value)
                         else:
                             query = query.eq(key, value)
             
