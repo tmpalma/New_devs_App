@@ -315,10 +315,21 @@ class SupabaseConnectionPool:
         self._health_monitor_task = None
         self._pool_cleaner_task = None
         self._initialized = False
+        self._skipped = False  # True when Supabase URL is not set (local/challenge mode)
         
     async def initialize(self):
-        """Initialize the connection pool"""
+        """Initialize the connection pool. No-op when Supabase URL is not set (local Docker / challenge mode)."""
         if self._initialized:
+            return
+
+        supabase_url = getattr(settings, "supabase_url", None)
+        supabase_key = getattr(settings, "supabase_service_role_key", None)
+        if not supabase_url or not supabase_key:
+            logger.info(
+                "Supabase URL or service role key not set — skipping connection pool (local/challenge mode)."
+            )
+            self._skipped = True
+            self._initialized = True
             return
             
         try:
@@ -354,6 +365,10 @@ class SupabaseConnectionPool:
     @asynccontextmanager
     async def get_client(self):
         """Get a client from the pool with automatic return and graceful degradation"""
+        if getattr(self, "_skipped", False):
+            logger.debug("Supabase pool skipped (no URL) — using fallback client")
+            yield GracefulDegradationClient(fallback_service)
+            return
         if self._circuit_breaker_open:
             if time.time() - self._circuit_breaker_opened_at < self._circuit_breaker_timeout:
                 # Circuit breaker is open - provide graceful degradation
@@ -547,6 +562,22 @@ class SupabaseConnectionPool:
     
     def get_pool_status(self) -> Dict[str, Any]:
         """Get detailed pool status"""
+        if getattr(self, "_skipped", False):
+            return {
+                "initialized": True,
+                "skipped": True,
+                "reason": "Supabase URL not set (local/challenge mode)",
+                "total_connections": 0,
+                "available_connections": 0,
+                "active_connections": 0,
+                "successful_operations": 0,
+                "failed_operations": 0,
+                "success_rate": 100.0,
+                "average_response_time": 0.0,
+                "circuit_breaker_open": False,
+                "last_health_check": self.metrics.last_health_check,
+                "max_connections": self.max_connections,
+            }
         return {
             "total_connections": self.metrics.total_connections,
             "available_connections": self._pool.qsize(),
@@ -562,6 +593,9 @@ class SupabaseConnectionPool:
     
     async def close(self):
         """Close the connection pool"""
+        if getattr(self, "_skipped", False):
+            logger.debug("Supabase pool was skipped — nothing to close")
+            return
         if self._health_monitor_task:
             self._health_monitor_task.cancel()
         if self._pool_cleaner_task:

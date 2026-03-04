@@ -1,6 +1,5 @@
 import asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.pool import QueuePool
 import logging
 from ..config import settings
 
@@ -12,19 +11,25 @@ class DatabasePool:
         self.session_factory = None
         
     async def initialize(self):
-        """Initialize database connection pool"""
+        """Initialize database connection pool using settings.database_url (e.g. from DATABASE_URL env)."""
         try:
-            # Create async engine with connection pooling
-            database_url = f"postgresql+asyncpg://{settings.supabase_db_user}:{settings.supabase_db_password}@{settings.supabase_db_host}:{settings.supabase_db_port}/{settings.supabase_db_name}"
+            # Use database_url from settings (postgresql://...) and convert to async driver for SQLAlchemy
+            url = getattr(settings, "database_url", None) or "postgresql://postgres:postgres@db:5432/propertyflow"
+            if url.startswith("postgresql://"):
+                database_url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            elif url.startswith("postgres://"):
+                database_url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+            else:
+                database_url = url if "+asyncpg" in url else f"postgresql+asyncpg://{url}"
             
+            # create_async_engine uses an async-compatible pool by default; do not pass poolclass=QueuePool
             self.engine = create_async_engine(
                 database_url,
-                poolclass=QueuePool,
-                pool_size=20,  # Number of connections to maintain
-                max_overflow=30,  # Additional connections when needed
-                pool_pre_ping=True,  # Validate connections
-                pool_recycle=3600,  # Recycle connections every hour
-                echo=False  # Set to True for SQL debugging
+                pool_size=20,
+                max_overflow=30,
+                pool_pre_ping=True,
+                pool_recycle=3600,
+                echo=False,
             )
             
             self.session_factory = async_sessionmaker(
