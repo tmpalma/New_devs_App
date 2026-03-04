@@ -13,6 +13,7 @@ from .city_access_fast import (
     clear_city_access_cache_for_tenant,
 )
 from ...core.auth import authenticate_request
+from ...core.tenant_cache import tenant_cache
 from ...models.auth import AuthenticatedUser
 import time
 import logging

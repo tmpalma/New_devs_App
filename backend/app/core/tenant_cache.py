@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 class TenantCache:
     """Simple in-memory cache for tenant data with TTL support."""
 
+    # TTL settings exposed for health/cache-stats (values in seconds)
+    user_tenants_ttl: int = 300
+    city_access_ttl: int = 300
+    property_access_ttl: int = 300
+    tenant_config_ttl: int = 300
+
     def __init__(self, default_ttl: int = 300):
         """
         Initialize the tenant cache.
@@ -20,6 +26,16 @@ class TenantCache:
         """
         self._cache: Dict[str, Dict[str, Any]] = {}
         self._default_ttl = default_ttl
+
+    async def warm_cache_for_user(
+        self, user_id: str, tenant_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        No-op for health endpoint compatibility. City/user cache warming
+        is handled by Redis in city_access_fast; this in-memory cache
+        does not pre-warm per user.
+        """
+        return {"warmed": False, "message": "Cache warming uses Redis; no-op for in-memory tenant cache"}
 
     def get(self, key: str) -> Optional[Any]:
         """

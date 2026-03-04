@@ -1,4 +1,5 @@
 from typing import Any, Optional
+from fastapi import HTTPException
 from supabase import create_client, Client
 from .config import settings
 from .core.tenant_context import get_user_token

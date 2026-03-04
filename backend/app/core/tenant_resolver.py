@@ -72,22 +72,29 @@ class TenantResolver:
     async def resolve_tenant_id(user_id: str, user_email: str, token: Optional[str] = None) -> str:
         """
         Resolve tenant ID for a user.
-        
-        Args:
-            user_id: User ID
-            user_email: User email
-            
-        Returns:
-            Tenant ID
+        Local Docker: tenant-a = Sunset Properties, tenant-b = Ocean Rentals.
         """
-        # Fallback mapping by known user email.
-        if user_email == "sunset@propertyflow.com":
+        if not user_email:
             return "tenant-a"
-        if user_email == "ocean@propertyflow.com":
+        email = user_email.lower().strip()
+
+        # tenant-a (Sunset Properties)
+        if email in (
+            "sunset@propertyflow.com",
+            "manager@sunset.com",
+            "candidate@propertyflow.com",
+        ):
+            return "tenant-a"
+
+        # tenant-b (Ocean Rentals) – so "two clients" see different data in local Docker
+        if email in (
+            "ocean@propertyflow.com",
+            "sid@theflexliving.com",
+            "raouf@theflexliving.com",
+            "michael@theflexliving.com",
+        ):
             return "tenant-b"
-        if user_email == "candidate@propertyflow.com":
-            return "tenant-a"
-            
+
         # Default fallback
         return "tenant-a"
 
