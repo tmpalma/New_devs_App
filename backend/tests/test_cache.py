@@ -89,3 +89,45 @@ async def test_get_revenue_summary_cache_miss():
     mock_get.assert_called_once_with("revenue:t1:p1")
     mock_calculate.assert_called_once_with("p1", "t1")
     mock_setex.assert_called_once_with("revenue:t1:p1", 300, json.dumps(db_result))
+
+
+@pytest.mark.asyncio
+async def test_get_revenue_summary_tenant_isolation():
+    """Same property_id for two tenants uses different cache keys and returns isolated data."""
+    prop_id = "p1"
+    result_ta = {
+        "property_id": prop_id,
+        "tenant_id": "ta",
+        "total": "100",
+        "currency": "USD",
+        "count": 2,
+    }
+    result_tb = {
+        "property_id": prop_id,
+        "tenant_id": "tb",
+        "total": "200",
+        "currency": "USD",
+        "count": 4,
+    }
+    store = {}
+
+    class FakeRedis:
+        async def get(self, key):
+            return store.get(key)
+
+        async def setex(self, key, ttl, value):
+            store[key] = value
+
+    fake_redis = FakeRedis()
+    mock_calculate = AsyncMock(side_effect=[result_ta, result_tb])
+    with (
+        patch("app.services.cache.redis_client", fake_redis),
+        patch("app.services.reservations.calculate_total_revenue", mock_calculate),
+    ):
+        result_a = await get_revenue_summary(prop_id, "ta")
+        result_b = await get_revenue_summary(prop_id, "tb")
+    assert result_a["total"] == "100"
+    assert result_b["total"] == "200"
+    assert set(store.keys()) == {"revenue:ta:p1", "revenue:tb:p1"}
+    assert json.loads(store["revenue:ta:p1"]) == result_ta
+    assert json.loads(store["revenue:tb:p1"]) == result_tb
