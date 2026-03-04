@@ -1307,19 +1307,22 @@ async def update_user(
             invalidate_user_cache(user_id)
             logger.info(f"ℹ️ Local cache invalidation for user {user_id} (Redis not connected)")
 
-        # Clear cache
+        # Clear users list cache for all affected tenants (user's tenant + operator's tenant)
         tenant_result = supabase.service.table("user_tenants")\
             .select("tenant_id")\
             .eq("user_id", user_id)\
             .limit(1)\
             .execute()
-        
-        if tenant_result.data and redis_client.is_connected:
-            cache_key = get_cache_key(tenant_result.data[0]["tenant_id"])
-        if operator_tid and redis_client.is_connected:
-            cache_key = get_cache_key(operator_tid)
-            await redis_client.delete(cache_key)
-            logger.info(f"Cleared cache for tenant {operator_tid}")
+        tenant_ids_to_clear = set()
+        if tenant_result.data:
+            tenant_ids_to_clear.add(tenant_result.data[0]["tenant_id"])
+        if operator_tid:
+            tenant_ids_to_clear.add(operator_tid)
+        if redis_client.is_connected and tenant_ids_to_clear:
+            for tid in tenant_ids_to_clear:
+                cache_key = get_cache_key(tid)
+                await redis_client.delete(cache_key)
+                logger.info(f"Cleared cache for tenant {tid}")
 
         return {"message": "User updated successfully"}
         
