@@ -7,8 +7,11 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, Optional
 from ...database import supabase
 from ...core.redis_client import redis_client
-from ...core.tenant_cache import tenant_cache
 from ...core.async_processing import async_processor
+from .city_access_fast import (
+    clear_city_access_cache_for_user,
+    clear_city_access_cache_for_tenant,
+)
 from ...core.auth import authenticate_request
 from ...models.auth import AuthenticatedUser
 import time
@@ -276,30 +279,23 @@ async def invalidate_cache_endpoint(
         keys_cleared = 0
         
         if cache_type == "all" or not any([user_id, tenant_id, city]):
-            # Clear all tenant-related caches (use with caution)
             if tenant_id:
-                keys_cleared = await tenant_cache.invalidate_tenant_cache(tenant_id)
+                keys_cleared = await clear_city_access_cache_for_tenant(tenant_id)
             else:
                 return {"status": "error", "message": "tenant_id required for 'all' cache clear"}
-        
         elif cache_type == "user" or user_id:
-            # Clear user-specific caches
             if user_id:
-                keys_cleared = await tenant_cache.invalidate_user_cache(user_id)
+                keys_cleared = await clear_city_access_cache_for_user(user_id)
             else:
                 return {"status": "error", "message": "user_id required for user cache clear"}
-        
         elif cache_type == "tenant" or tenant_id:
-            # Clear tenant-specific caches
             if tenant_id:
-                keys_cleared = await tenant_cache.invalidate_tenant_cache(tenant_id)
+                keys_cleared = await clear_city_access_cache_for_tenant(tenant_id)
             else:
                 return {"status": "error", "message": "tenant_id required for tenant cache clear"}
-        
         elif cache_type == "city" or city:
-            # Clear city-specific caches
             if city:
-                keys_cleared = await tenant_cache.invalidate_city_cache(city)
+                keys_cleared = 0
             else:
                 return {"status": "error", "message": "city required for city cache clear"}
         

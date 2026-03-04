@@ -9,7 +9,6 @@ from ...core.auth import authenticate_request, ADMIN_EMAILS
 from ...models.auth import AuthenticatedUser
 from ...database import supabase
 from ...core.redis_client import redis_client
-from ...core.tenant_cache import tenant_cache
 from ...core.tenant_resolver import TenantResolver
 import json
 import time
@@ -39,36 +38,57 @@ def get_global_cities_cache_key(tenant_id: str) -> str:
     return f"global_cities:v2:{tenant_id}"
 
 async def get_cached_city_access(user_id: str, tenant_id: str) -> Optional[List[str]]:
-    """Get cached city access for user"""
+    """Get cached city access for user (uses RedisClient serialization)."""
     if not redis_client:
         return None
-    
     try:
         cache_key = get_user_city_cache_key(user_id, tenant_id)
         cached = await redis_client.get(cache_key)
-        if cached:
+        if cached and isinstance(cached, list):
             logger.info(f"Cache HIT for user {user_id} city access")
-            return json.loads(cached)
+            return cached
     except Exception as e:
         logger.warning(f"Redis error getting city cache: {e}")
-    
     return None
 
+
 async def set_cached_city_access(user_id: str, tenant_id: str, cities: List[str]) -> None:
-    """Cache city access for user"""
+    """Cache city access for user (uses RedisClient serialization)."""
     if not redis_client:
         return
-    
     try:
         cache_key = get_user_city_cache_key(user_id, tenant_id)
-        await redis_client.setex(
-            cache_key,
-            CACHE_TTL,
-            json.dumps(cities)
-        )
+        await redis_client.set(cache_key, cities, CACHE_TTL)
         logger.info(f"Cached city access for user {user_id}: {cities}")
     except Exception as e:
         logger.warning(f"Redis error setting city cache: {e}")
+
+
+async def clear_city_access_cache_for_user(user_id: str) -> int:
+    """Clear all city access cache entries for a user. Returns number of keys deleted."""
+    if not redis_client or not redis_client.is_connected:
+        return 0
+    try:
+        return await redis_client.clear_pattern(f"city_access:v2:*:{user_id}")
+    except Exception as e:
+        logger.warning(f"Redis error clearing city cache for user {user_id}: {e}")
+        return 0
+
+
+async def clear_city_access_cache_for_tenant(tenant_id: str) -> int:
+    """Clear all city access cache entries for a tenant. Returns number of keys deleted."""
+    if not redis_client or not redis_client.is_connected:
+        return 0
+    try:
+        n = 0
+        if await redis_client.delete(get_global_cities_cache_key(tenant_id)):
+            n += 1
+        n += await redis_client.clear_pattern(f"city_access:v2:{tenant_id}:*")
+        return n
+    except Exception as e:
+        logger.warning(f"Redis error clearing city cache for tenant {tenant_id}: {e}")
+        return 0
+
 
 async def get_all_tenant_cities(tenant_id: str) -> List[str]:
     """Get all unique cities for a tenant with caching and robust fallback"""
@@ -81,9 +101,9 @@ async def get_all_tenant_cities(tenant_id: str) -> List[str]:
             
             cache_key = get_global_cities_cache_key(tenant_id)
             cached = await redis_client.get(cache_key)
-            if cached:
+            if cached and isinstance(cached, list):
                 logger.info(f"Cache HIT for tenant {tenant_id} global cities")
-                return json.loads(cached)
+                return cached
         except Exception as e:
             logger.warning(f"Redis unavailable or error getting global cities cache: {e}")
             redis_healthy = False
@@ -135,11 +155,7 @@ async def get_all_tenant_cities(tenant_id: str) -> List[str]:
         if redis_healthy:
             try:
                 cache_key = get_global_cities_cache_key(tenant_id)
-                await redis_client.setex(
-                    cache_key,
-                    GLOBAL_CACHE_TTL,
-                    json.dumps(cities)
-                )
+                await redis_client.set(cache_key, cities, GLOBAL_CACHE_TTL)
             except Exception as e:
                 logger.warning(f"Redis error setting global cities cache: {e}")
         
@@ -224,7 +240,7 @@ async def get_city_access_fast(
         
         # ✅ SIMPLIFIED CACHING: Check cache for non-admin users only
         if not is_admin:
-            cached_cities = await tenant_cache.get_city_access(tenant_id, user_id)
+            cached_cities = await get_cached_city_access(user_id, tenant_id)
             if cached_cities is not None:
                 elapsed = int((time.time() - start_time) * 1000)
                 logger.info(f"CACHE_HIT: User {user.email} (tenant {tenant_id}) - {len(cached_cities)} cities")
@@ -334,8 +350,9 @@ async def get_city_access_fast(
                 logger.error(f"INVALID_RESULT: Cities result is not a list for user {user.email}")
                 cities = []
             
-            # Cache the result using centralized caching (will be handled automatically by tenant_cache.get_city_access)
-            
+            # Cache the result for next time
+            await set_cached_city_access(user_id, tenant_id, cities)
+
             elapsed = int((time.time() - start_time) * 1000)
             logger.info(f"SUCCESS: User {user.email} (tenant {tenant_id}) has access to {len(cities)} cities: {cities}")
             
@@ -394,15 +411,12 @@ async def invalidate_city_cache(
         keys_deleted = 0
         
         if user_id and not tenant_id:
-            # Invalidate all caches for specific user
-            keys_deleted = await tenant_cache.invalidate_user_cache(user_id)
+            keys_deleted = await clear_city_access_cache_for_user(user_id)
         elif tenant_id and not user_id:
-            # Invalidate all caches for specific tenant
-            keys_deleted = await tenant_cache.invalidate_tenant_cache(tenant_id)
+            keys_deleted = await clear_city_access_cache_for_tenant(tenant_id)
         elif user_id and tenant_id:
-            # Invalidate specific user+tenant combination
-            user_keys = await tenant_cache.invalidate_user_cache(user_id)
-            tenant_keys = await tenant_cache.invalidate_tenant_cache(tenant_id)
+            user_keys = await clear_city_access_cache_for_user(user_id)
+            tenant_keys = await clear_city_access_cache_for_tenant(tenant_id)
             keys_deleted = user_keys + tenant_keys
         else:
             return {"success": False, "message": "Please specify user_id and/or tenant_id"}
@@ -481,12 +495,12 @@ async def clear_city_cache_debug(
             except Exception as e:
                 logger.error(f"Failed to clear global cache: {e}")
         
-        # Clear user-specific cache (if any)
+        # Clear user-specific city cache
         try:
-            from ...core.tenant_cache import invalidate_city_access_cache
-            invalidate_city_access_cache(user.id, tenant_id)
-            cleared_count += 1
-            logger.info(f"🗑️ DEBUG_CACHE_CLEAR: Cleared user cache for {user.email}")
+            n = await clear_city_access_cache_for_user(user.id)
+            cleared_count += n
+            if n:
+                logger.info(f"🗑️ DEBUG_CACHE_CLEAR: Cleared user cache for {user.email}")
         except Exception as e:
             logger.error(f"Failed to clear user cache: {e}")
         
